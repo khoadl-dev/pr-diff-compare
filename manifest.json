@@ -4,13 +4,11 @@
   "version": "1.0.0",
   "description": "Compare the diffs of 2 GitHub pull requests or Gitlab merge requests.",
   "permissions": [
-    "activeTab",
-    "scripting",
-    "cookies"
+    "activeTab"
   ],
   "host_permissions": [
+    "https://gitlab.com/",
     "https://github.com/",
-    "https://*.gitlab.com/",
     "https://patch-diff.githubusercontent.com/"
   ],
   "icons": {
