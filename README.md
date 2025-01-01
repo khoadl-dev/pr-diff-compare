@@ -1,7 +1,6 @@
 # PR Diff Compare
 
 This is a Chrome extension for comparing 2 PR (Pull Request/Merge Request) diffs.
-A Firefox extension may come later :)
 
 ## Why?
 
@@ -13,16 +12,6 @@ The tool aims to provide basic [git range-diff](https://git-scm.com/docs/git-ran
 Some good explanations of the Git command can be found in this question [Can somebody explain the usage of git range-diff?](https://stackoverflow.com/a/61219652/14725572)
 
 For now, the tool only outputs whether the diffs are the same or not. It does not show the detailed differences.
-
-## Installation
-
-This extension is not available on the Chrome Web Store, so you need to install it manually.
-
-1. Download the latest release from this repo
-2. Go to `chrome://extensions/`
-3. Enable "Developer mode"
-4. Click "Load unpacked" at the top left corner
-5. Find and select the downloaded extension folder
 
 ## Usage
 
@@ -46,15 +35,15 @@ This extension is not available on the Chrome Web Store, so you need to install 
 
 **Screenshots:**
 
-* ![docs/demo-gh-basic-different.png](docs/demo-gh-basic-different.png)
+* ![docs/demo-gh-basic-different.png](docs/demo-gh-basic-different.jpg)
 
-* ![docs/demo-gh-ignore-context-different.png](docs/demo-gh-ignore-context-different.png)
+* ![docs/demo-gh-ignore-context-different.png](docs/demo-gh-ignore-context-different.jpg)
 
-* ![docs/demo-gh-ignore-context-same.png](docs/demo-gh-ignore-context-same.png)
+* ![docs/demo-gh-ignore-context-same.png](docs/demo-gh-ignore-context-same.jpg)
 
-* ![docs/demo-gh-select-files-same.png](docs/demo-gh-select-files-same.png)
+* ![docs/demo-gh-select-files-same.png](docs/demo-gh-select-files-same.jpg)
 
-* ![docs/demo-gl-select-files-ignore-diff-same.png](docs/demo-gl-select-files-ignore-diff-same.png)
+* ![docs/demo-gl-select-files-ignore-diff-same.png](docs/demo-gl-select-files-ignore-diff-same.jpg)
 
 ## Data privacy
 
@@ -62,10 +51,8 @@ This extension runs locally and does not collect any of your data.
 
 ## TODOs
 
-* [ ] Keyboard triggered comparison -- run the comparison when "Enter" is hit on one of the input boxes
-* [x] Option to run the comparison on specific file(s)
 * [ ] Option to run the comparison on specific commit(s)
-* [ ] [v2] Showing diff details -- this may require a diff parser
+* [ ] [v2] Showing detailed differences
 
 ## Acknowledgements
 
