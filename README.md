@@ -1,6 +1,6 @@
 # PR Diff Compare
 
-This is a Chrome extension for comparing 2 PR (Pull Request/Merge Request) diffs.
+This is a Chrome extension for comparing 2 PR (Pull Request/Merge Request) diffs. Find it on the Chrome Web Store at https://chromewebstore.google.com/detail/pr-diff-compare/bhboildabfhaebncbooifkkfjninjlnm.
 
 ## Why?
 
