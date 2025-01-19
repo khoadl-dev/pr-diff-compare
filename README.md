@@ -57,6 +57,8 @@ Step-by-step guide:
 
 * ![docs/demo-gh-select-files-same.png](docs/demo-gh-select-files-same.jpg)
 
+* ![docs/demo-gh-pr-commit.jpg](docs/demo-gh-pr-commit.jpg)
+
 * ![docs/demo-gl-select-files-ignore-diff-same.png](docs/demo-gl-select-files-ignore-diff-same.jpg)
 
 **Demo video:**
