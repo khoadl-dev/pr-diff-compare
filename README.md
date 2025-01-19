@@ -15,6 +15,9 @@ For now, the tool only outputs whether the diffs are the same or not. It does no
 
 ## Usage
 
+TL;DR: to compare 2 PRs' diffs, simply open the extension on a PR tab, paste the URL of another PR, and hit Enter.
+
+Step-by-step guide:
 1. Open 2 PRs in 2 tabs
 2. Copy one of the PR URLs
 3. Go to the other PR tab
@@ -27,11 +30,22 @@ For now, the tool only outputs whether the diffs are the same or not. It does no
 **Notes:**
 
 * A PR URL must be in one of the following formats:
-  * For Github: `https://github.com/<owner>/<repo>/pull/<pr-number>/<optional-extra-path>`
-  * For Gitlab: `https://gitlab.com/<owner>/<repo>/-/merge_requests/<pr-number>/<optional-extra-path>`
-* Example URLs:
-  * PR 1: `https://github.com/owner/repo/pull/1`
-  * PR 2: `https://github.com/owner/repo/pull/2/files`
+  * For Github:
+    * PR: `https://github.com/<owner>/<repo>/pull/<pr-number>/<optional-extra-path>`
+    * PR commit: `https://github.com/<owner>/<repo>/pull/<pr-number>/commits/<commit-hash>/<optional-extra-path>`
+    * Commit: `https://github.com/<owner>/<repo>/commit/<commit-hash>/<optional-extra-path>`
+  * For Gitlab:
+    * MR: `https://gitlab.com/<owner>/<repo>/-/merge_requests/<mr-number>/<optional-extra-path>`
+    * MR commit: `https://gitlab.com/<owner>/<repo>/-/merge_requests/<mr-number>/diffs?commit_id=<commit-hash>`
+    * Commit: `https://gitlab.com/<owner>/<repo>/-/commit/<commit-hash>?<optional-query-string>`
+* Examples of valid URLs:
+  * `https://github.com/owner/repo/pull/1`
+  * `https://github.com/owner/repo/pull/2/files`
+  * `https://github.com/owner/repo/pull/3/commits/1234567890abcdef`
+  * `https://github.com/owner/repo/commit/1234567890abcdef`
+  * `https://gitlab.com/owner/repo/-/merge_requests/4`
+  * `https://gitlab.com/owner/repo/-/merge_requests/5/diffs?commit_id=1234567890abcdef`
+  * `https://gitlab.com/owner/repo/-/commit/1234567890abcdef?merge_request_iid=5`
 
 **Screenshots:**
 
@@ -43,7 +57,13 @@ For now, the tool only outputs whether the diffs are the same or not. It does no
 
 * ![docs/demo-gh-select-files-same.png](docs/demo-gh-select-files-same.jpg)
 
+* ![docs/demo-gh-pr-commit.jpg](docs/demo-gh-pr-commit.jpg)
+
 * ![docs/demo-gl-select-files-ignore-diff-same.png](docs/demo-gl-select-files-ignore-diff-same.jpg)
+
+**Demo video:**
+
+[![Watch the video](https://img.youtube.com/vi/7pxMChKD7-o/0.jpg)](https://www.youtube.com/watch?v=7pxMChKD7-o)
 
 ## Data privacy
 
@@ -51,7 +71,7 @@ This extension runs locally and does not collect any of your data.
 
 ## TODOs
 
-* [ ] Option to run the comparison on specific commit(s)
+* [x] Option to run the comparison on specific commit(s)
 * [ ] [v2] Showing detailed differences
 
 ## Acknowledgements

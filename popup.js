@@ -7,6 +7,85 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 let filesList = [];
 let selectedFiles = new Set();
 
+// ===================================== //
+// === moved here from background.js === //
+
+const URL_PATTERNS = {
+  github: {
+    commit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/commit\/([a-f0-9]+)(\/.*)?$/,
+    prCommit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)\/commits\/([a-f0-9]+)(\/.*)?$/,
+    pr: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)(\/.*)?$/,
+  },
+  gitlab: {
+    commit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/commit\/([a-f0-9]+)(\?.*)?$/,
+    mrCommit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)\/diffs\?commit_id=([a-f0-9]+)$/,
+    mr: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)(\/.*)?$/,
+  }
+};
+
+function extractGithubInfo(url) {
+  // Try standalone commit pattern first
+  const commitMatch = url.match(URL_PATTERNS.github.commit);
+  if (commitMatch) {
+    const [_, domain, owner, repo, commitHash] = commitMatch;
+    return { type: 'github', domain, owner, repo, commitHash };
+  }
+
+  // Try PR commit pattern second
+  const prCommitMatch = url.match(URL_PATTERNS.github.prCommit);
+  if (prCommitMatch) {
+    const [_, domain, owner, repo, prNumber, commitHash] = prCommitMatch;
+    return { type: 'github', domain, owner, repo, prNumber, commitHash };
+  }
+
+  // Try PR pattern last
+  const prMatch = url.match(URL_PATTERNS.github.pr);
+  if (prMatch) {
+    const [_, domain, owner, repo, prNumber] = prMatch;
+    return { type: 'github', domain, owner, repo, prNumber };
+  }
+
+  return null;
+}
+
+function extractGitLabInfo(url) {
+  // Try standalone commit pattern first
+  const commitMatch = url.match(URL_PATTERNS.gitlab.commit);
+  if (commitMatch) {
+    const [_, domain, owner, repo, commitHash] = commitMatch;
+    return { type: 'gitlab', domain, owner, repo, commitHash };
+  }
+
+  // Try MR commit pattern second
+  const mrCommitMatch = url.match(URL_PATTERNS.gitlab.mrCommit);
+  if (mrCommitMatch) {
+    const [_, domain, owner, repo, mrNumber, commitHash] = mrCommitMatch;
+    return { type: 'gitlab', domain, owner, repo, mrNumber, commitHash };
+  }
+
+  // Try MR pattern last
+  const mrMatch = url.match(URL_PATTERNS.gitlab.mr);
+  if (mrMatch) {
+    const [_, domain, owner, repo, mrNumber] = mrMatch;
+    return { type: 'gitlab', domain, owner, repo, mrNumber };
+  }
+
+  return null;
+}
+
+function extractPrInfo(url) {
+  const githubInfo = extractGithubInfo(url);
+  if (githubInfo) return githubInfo;
+
+  const gitLabInfo = extractGitLabInfo(url);
+  if (gitLabInfo) return gitLabInfo;
+
+  throw new Error('Invalid PR or commit URL');
+}
+
+// ============= end copy ============== //
+// ===================================== //
+
 // Initialize file selector
 const fileSelector = document.getElementById('fileSelector');
 const filesContent = document.getElementById('filesContent');
@@ -17,43 +96,49 @@ fileSelector.addEventListener('click', () => {
   fileSelector.classList.toggle('expanded', !isExpanded);
 
   if (!isExpanded && filesList.length === 0) {
-    // Fetch files when expanding for the first time
-    const url1 = document.getElementById('url1').value;
-    const url2 = document.getElementById('url2').value;
+    const url1 = document.getElementById('url1').value.trim();
+    const url2 = document.getElementById('url2').value.trim();
     const filesContentElement = document.getElementById('files-content');
     const loadingIndicator = document.getElementById('files-loading-indicator');
 
-    // Clear previous content and errors
+    // Clear previous content
     filesContentElement.innerHTML = '';
 
+    try {
+
     if (!url1 || !url2) {
-      filesContentElement.innerHTML = `
-        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
-          Please enter both PR URLs to view files for comparison.
-        </div>`;
-      return;
+      throw new Error('Please enter both PR URLs to view files for comparison.');
     }
+
+    // Parse URLs first
+    const info1 = extractPrInfo(url1);
+    const info2 = extractPrInfo(url2);
 
     // Show loading indicator
     loadingIndicator.style.display = 'block';
 
+    // Set a timeout to handle hanging requests
+    const timeout = setTimeout(() => {
+      loadingIndicator.style.display = 'none';
+      filesContentElement.innerHTML = `
+        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
+          Request timed out. Please try again.
+        </div>`;
+    }, 30000); // 30 second timeout
+
     Promise.all([
       new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: 'fetchFiles', url: url1 }, resolve);
+        chrome.runtime.sendMessage({ action: 'fetchFiles', url: url1, info: info1 }, resolve);
       }),
       new Promise((resolve) => {
-        chrome.runtime.sendMessage({ action: 'fetchFiles', url: url2 }, resolve);
+        chrome.runtime.sendMessage({ action: 'fetchFiles', url: url2, info: info2 }, resolve);
       })
     ]).then(([response1, response2]) => {
-      // Hide loading indicator
+      clearTimeout(timeout);
       loadingIndicator.style.display = 'none';
 
       if (response1.error || response2.error) {
-        filesContentElement.innerHTML = `
-          <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
-            Error: ${response1.error || response2.error}
-          </div>`;
-        return;
+        throw new Error(response1.error || response2.error);
       }
 
       // Merge and deduplicate files from both PRs
@@ -63,7 +148,21 @@ fileSelector.addEventListener('click', () => {
       ]);
       filesList = Array.from(filesSet).sort();
       renderFilesList();
+    }).catch(error => {
+      clearTimeout(timeout);
+      loadingIndicator.style.display = 'none';
+      filesContentElement.innerHTML = `
+        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
+          Error: ${error.message}
+        </div>`;
     });
+
+    } catch (error) {
+      filesContentElement.innerHTML = `
+        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
+          ${error.message}
+        </div>`;
+    }
   }
 });
 
@@ -127,42 +226,56 @@ function clearCache() {
   chrome.runtime.sendMessage({ action: 'clearCache' });
 }
 
+const url1Input = document.getElementById('url1');
+const url2Input = document.getElementById('url2');
+
 // Add event listeners for URL input changes
-document.getElementById('url1').addEventListener('input', () => {
+url1Input.addEventListener('input', () => {
   resetFileSelection();
   clearCache();
 });
-document.getElementById('url2').addEventListener('input', () => {
+url2Input.addEventListener('input', () => {
   resetFileSelection();
   clearCache();
 });
 
-document.getElementById('compare').addEventListener('click', () => {
-  // TODO: disable the button during fetching and comparing
-  const url1 = document.getElementById('url1').value;
-  const url2 = document.getElementById('url2').value;
+function runComparison() {
+  const url1 = document.getElementById('url1').value.trim();
+  const url2 = document.getElementById('url2').value.trim();
   const ignoreContext = document.getElementById('ignoreContext').checked;
   const result = document.getElementById('result');
+  const compareButton = document.getElementById('compare');
 
-  result.textContent = 'Fetching diffs and comparing...';
+  // Disable button and show loading state
+  compareButton.disabled = true;
+  compareButton.textContent = 'Comparing...';
+
+  result.textContent = 'Comparing...';
   result.classList.remove('error', 'success', 'failure');
   result.classList.add('loading');
 
+  try {
+
   if (!url1 || !url2) {
-    result.textContent = 'Please enter both URLs.';
-    result.classList.add('error');
-    result.classList.remove('loading');
-    return;
+    throw new Error('Please enter both URLs.');
   }
+
+  const info1 = extractPrInfo(url1);
+  const info2 = extractPrInfo(url2);
 
   chrome.runtime.sendMessage({
     action: 'compare',
     url1,
     url2,
+    info1,
+    info2,
     ignoreContext,
     selectedFiles: [...selectedFiles],
   }, (response) => {
     result.classList.remove('loading');
+    // Re-enable button and restore text
+    compareButton.disabled = false;
+    compareButton.textContent = 'Compare';
 
     if (response.error) {
       result.textContent = `Error: ${response.error}`;
@@ -177,7 +290,28 @@ document.getElementById('compare').addEventListener('click', () => {
       }
     }
   });
-});
+
+  } catch (error) {
+    result.classList.remove('loading');
+    result.classList.add('error');
+    result.textContent = `Error: ${error.message}`;
+    compareButton.disabled = false;
+    compareButton.textContent = 'Compare';
+  }
+}
+
+// TODO: hoist all element retrieval to top of file
+const compareButton = document.getElementById('compare');
+compareButton.addEventListener('click', runComparison);
+
+function handleEnterKey(event) {
+  if (event.key === 'Enter') {
+    runComparison();
+  }
+}
+
+url1Input.addEventListener('keypress', handleEnterKey);
+url2Input.addEventListener('keypress', handleEnterKey);
 
 document.addEventListener('DOMContentLoaded', function() {
   const infoIcons = document.querySelectorAll('.info-icon-wrapper');

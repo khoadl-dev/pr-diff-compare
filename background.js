@@ -1,42 +1,98 @@
 let cachedDiffs = {};
 
-function extractGitLabMrInfo(url) {
-  const pattern = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)(\/.*)?$/;
-  const match = url.match(pattern);
-  if (match) {
-    const [_, domain, owner, repo, mrNumber, __] = match;
-    return { type: 'gitlab', domain, owner, repo, mrNumber };
+// TODO: remove this
+// ===================================== //
+// === deprecated code to be removed === //
+
+const URL_PATTERNS = {
+  github: {
+    commit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/commit\/([a-f0-9]+)(\/.*)?$/,
+    prCommit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)\/commits\/([a-f0-9]+)(\/.*)?$/,
+    pr: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)(\/.*)?$/,
+  },
+  gitlab: {
+    commit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/commit\/([a-f0-9]+)(\?.*)?$/,
+    mrCommit: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)\/diffs\?commit_id=([a-f0-9]+)$/,
+    mr: /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/-\/merge_requests\/(\d+)(\/.*)?$/,
   }
+};
+
+function extractGithubInfo(url) {
+  // Try standalone commit pattern first
+  const commitMatch = url.match(URL_PATTERNS.github.commit);
+  if (commitMatch) {
+    const [_, domain, owner, repo, commitHash] = commitMatch;
+    return { type: 'github', domain, owner, repo, commitHash };
+  }
+
+  // Try PR commit pattern second
+  const prCommitMatch = url.match(URL_PATTERNS.github.prCommit);
+  if (prCommitMatch) {
+    const [_, domain, owner, repo, prNumber, commitHash] = prCommitMatch;
+    return { type: 'github', domain, owner, repo, prNumber, commitHash };
+  }
+
+  // Try PR pattern last
+  const prMatch = url.match(URL_PATTERNS.github.pr);
+  if (prMatch) {
+    const [_, domain, owner, repo, prNumber] = prMatch;
+    return { type: 'github', domain, owner, repo, prNumber };
+  }
+
   return null;
 }
 
-function extractGithubPrInfo(url) {
-  const pattern = /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)(\/.*)?$/;
-  const match = url.match(pattern);
-  if (match) {
-    const [_, domain, owner, repo, prNumber, __] = match;
-    return { type: 'github', domain, owner, repo, prNumber };
+function extractGitLabInfo(url) {
+  // Try standalone commit pattern first
+  const commitMatch = url.match(URL_PATTERNS.gitlab.commit);
+  if (commitMatch) {
+    const [_, domain, owner, repo, commitHash] = commitMatch;
+    return { type: 'gitlab', domain, owner, repo, commitHash };
   }
+
+  // Try MR commit pattern second
+  const mrCommitMatch = url.match(URL_PATTERNS.gitlab.mrCommit);
+  if (mrCommitMatch) {
+    const [_, domain, owner, repo, mrNumber, commitHash] = mrCommitMatch;
+    return { type: 'gitlab', domain, owner, repo, mrNumber, commitHash };
+  }
+
+  // Try MR pattern last
+  const mrMatch = url.match(URL_PATTERNS.gitlab.mr);
+  if (mrMatch) {
+    const [_, domain, owner, repo, mrNumber] = mrMatch;
+    return { type: 'gitlab', domain, owner, repo, mrNumber };
+  }
+
   return null;
 }
 
 function extractPrInfo(url) {
-  const githubInfo = extractGithubPrInfo(url);
+  const githubInfo = extractGithubInfo(url);
   if (githubInfo) return githubInfo;
 
-  const gitLabInfo = extractGitLabMrInfo(url);
+  const gitLabInfo = extractGitLabInfo(url);
   if (gitLabInfo) return gitLabInfo;
 
-  throw new Error('Invalid GitHub PR or GitLab MR URL');
+  throw new Error('Invalid PR or commit URL');
 }
+
+// ========== end deprecation ========== //
+// ===================================== //
 
 function constructDiffUrl(info) {
   if (info.type === 'github') {
+    if (info.commitHash) {
+      return `https://${info.domain}/${info.owner}/${info.repo}/commit/${info.commitHash}.diff`;
+    }
     return `https://${info.domain}/${info.owner}/${info.repo}/pull/${info.prNumber}.diff`;
   } else if (info.type === 'gitlab') {
+    if (info.commitHash) {
+      return `https://${info.domain}/${info.owner}/${info.repo}/-/commit/${info.commitHash}.diff`;
+    }
     return `https://${info.domain}/${info.owner}/${info.repo}/-/merge_requests/${info.mrNumber}.diff`;
   }
-  throw new Error('Unknown repository type');
+  throw new Error('Unknown repository type. Currently only GitHub and GitLab are supported.');
 }
 
 function parseDiff(diffText) {
@@ -104,16 +160,15 @@ function compareDiffs(diff1Files, diff2Files, selectedFiles, ignoreContext) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'fetchFiles') {
-    const { url } = message;
+    const { url, info } = message;
     try {
-      const info = extractPrInfo(url);
-      const diffUrl = constructDiffUrl(info);
-
       // Check if we already have the diff cached
       if (cachedDiffs[url]) {
         sendResponse({ files: Object.keys(cachedDiffs[url]) });
         return;
       }
+
+      const diffUrl = constructDiffUrl(info);
 
       fetch(diffUrl, { credentials: 'include' })
         .then(response => {
@@ -137,7 +192,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   else if (message.action === 'compare') {
     try {
-      const { url1, url2, ignoreContext, selectedFiles } = message;
+      const { url1, url2, info1, info2, ignoreContext, selectedFiles } = message;
 
       // Check if we have both diffs cached
       if (cachedDiffs[url1] && cachedDiffs[url2]) {
@@ -145,9 +200,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ same: result });
         return;
       }
-
-      const info1 = extractPrInfo(url1);
-      const info2 = extractPrInfo(url2);
 
       const diffUrl1 = constructDiffUrl(info1);
       const diffUrl2 = constructDiffUrl(info2);
