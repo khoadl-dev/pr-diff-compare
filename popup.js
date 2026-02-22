@@ -6,6 +6,7 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
 let filesList = [];
 let selectedFiles = new Set();
+let differentFilesSet = new Set();
 
 // ===================================== //
 // === moved here from background.js === //
@@ -96,16 +97,20 @@ fileSelector.addEventListener('click', () => {
   fileSelector.classList.toggle('expanded', !isExpanded);
 
   if (!isExpanded && filesList.length === 0) {
-    const url1 = document.getElementById('url1').value.trim();
-    const url2 = document.getElementById('url2').value.trim();
-    const filesContentElement = document.getElementById('files-content');
-    const loadingIndicator = document.getElementById('files-loading-indicator');
+    fetchAndRenderFiles();
+  }
+});
 
-    // Clear previous content
-    filesContentElement.innerHTML = '';
+async function fetchAndRenderFiles() {
+  const url1 = document.getElementById('url1').value.trim();
+  const url2 = document.getElementById('url2').value.trim();
+  const filesContentElement = document.getElementById('files-content');
+  const loadingIndicator = document.getElementById('files-loading-indicator');
 
-    try {
+  // Clear previous content
+  filesContentElement.innerHTML = '';
 
+  try {
     if (!url1 || !url2) {
       throw new Error('Please enter both PR URLs to view files for comparison.');
     }
@@ -126,45 +131,37 @@ fileSelector.addEventListener('click', () => {
         </div>`;
     }, 30000); // 30 second timeout
 
-    Promise.all([
+    const [response1, response2] = await Promise.all([
       new Promise((resolve) => {
         chrome.runtime.sendMessage({ action: 'fetchFiles', url: url1, info: info1 }, resolve);
       }),
       new Promise((resolve) => {
         chrome.runtime.sendMessage({ action: 'fetchFiles', url: url2, info: info2 }, resolve);
       })
-    ]).then(([response1, response2]) => {
-      clearTimeout(timeout);
-      loadingIndicator.style.display = 'none';
+    ]);
 
-      if (response1.error || response2.error) {
-        throw new Error(response1.error || response2.error);
-      }
+    clearTimeout(timeout);
+    loadingIndicator.style.display = 'none';
 
-      // Merge and deduplicate files from both PRs
-      const filesSet = new Set([
-        ...(response1.files || []),
-        ...(response2.files || [])
-      ]);
-      filesList = Array.from(filesSet).sort();
-      renderFilesList();
-    }).catch(error => {
-      clearTimeout(timeout);
-      loadingIndicator.style.display = 'none';
-      filesContentElement.innerHTML = `
-        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
-          Error: ${error.message}
-        </div>`;
-    });
-
-    } catch (error) {
-      filesContentElement.innerHTML = `
-        <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
-          ${error.message}
-        </div>`;
+    if (response1.error || response2.error) {
+      throw new Error(response1.error || response2.error);
     }
+
+    // Merge and deduplicate files from both PRs
+    const filesSet = new Set([
+      ...(response1.files || []),
+      ...(response2.files || [])
+    ]);
+    filesList = Array.from(filesSet).sort();
+    renderFilesList();
+  } catch (error) {
+    loadingIndicator.style.display = 'none';
+    filesContentElement.innerHTML = `
+      <div style="padding: 12px; color: #86181d; background-color: #ffeef0; border-radius: 4px;">
+        Error: ${error.message}
+      </div>`;
   }
-});
+}
 
 function renderFilesList() {
   const filesContentElement = document.getElementById('files-content');
@@ -186,6 +183,9 @@ function renderFilesList() {
   filesList.forEach(file => {
     const div = document.createElement('div');
     div.className = 'file-item';
+    if (differentFilesSet.has(file)) {
+      div.classList.add('different');
+    }
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
@@ -212,6 +212,7 @@ function renderFilesList() {
 function resetFileSelection() {
   filesList = [];
   selectedFiles.clear();
+  differentFilesSet.clear();
   filesContent.style.display = 'none';
   fileSelector.classList.remove('expanded');
 
@@ -256,40 +257,53 @@ function runComparison() {
 
   try {
 
-  if (!url1 || !url2) {
-    throw new Error('Please enter both URLs.');
-  }
-
-  const info1 = extractPrInfo(url1);
-  const info2 = extractPrInfo(url2);
-
-  chrome.runtime.sendMessage({
-    action: 'compare',
-    url1,
-    url2,
-    info1,
-    info2,
-    ignoreContext,
-    selectedFiles: [...selectedFiles],
-  }, (response) => {
-    result.classList.remove('loading');
-    // Re-enable button and restore text
-    compareButton.disabled = false;
-    compareButton.textContent = 'Compare';
-
-    if (response.error) {
-      result.textContent = `Error: ${response.error}`;
-      result.classList.add('error');
-    } else {
-      if (response.same) {
-        result.textContent = 'The diffs are identical!';
-        result.classList.add('success');
-      } else {
-        result.textContent = 'The diffs are different!';
-        result.classList.add('failure');
-      }
+    if (!url1 || !url2) {
+      throw new Error('Please enter both URLs.');
     }
-  });
+
+    const info1 = extractPrInfo(url1);
+    const info2 = extractPrInfo(url2);
+
+    chrome.runtime.sendMessage({
+      action: 'compare',
+      url1,
+      url2,
+      info1,
+      info2,
+      ignoreContext,
+      selectedFiles: [...selectedFiles],
+    }, (response) => {
+      result.classList.remove('loading');
+      // Re-enable button and restore text
+      compareButton.disabled = false;
+      compareButton.textContent = 'Compare';
+
+      if (response.error) {
+        result.textContent = `Error: ${response.error}`;
+        result.classList.add('error');
+      } else {
+        if (response.same) {
+          result.textContent = 'The diffs are identical!';
+          result.classList.add('success');
+          differentFilesSet.clear();
+          renderFilesList();
+        } else {
+          result.textContent = 'The diffs are different! Changed files are highlighted in red above.';
+          result.classList.add('failure');
+          differentFilesSet = new Set(response.differentFiles);
+          if (filesList.length === 0) {
+            fetchAndRenderFiles().then(() => {
+              filesContent.style.display = 'block';
+              fileSelector.classList.add('expanded');
+            });
+          } else {
+            renderFilesList();
+            filesContent.style.display = 'block';
+            fileSelector.classList.add('expanded');
+          }
+        }
+      }
+    });
 
   } catch (error) {
     result.classList.remove('loading');
@@ -313,11 +327,11 @@ function handleEnterKey(event) {
 url1Input.addEventListener('keypress', handleEnterKey);
 url2Input.addEventListener('keypress', handleEnterKey);
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   const infoIcons = document.querySelectorAll('.info-icon-wrapper');
 
   infoIcons.forEach(icon => {
-    icon.addEventListener('click', function(e) {
+    icon.addEventListener('click', function (e) {
       // Find the closest tooltip
       const container = this.closest('.checkbox-header, .section-header');
       const tooltip = container.querySelector('.tooltip');
@@ -326,7 +340,7 @@ document.addEventListener('DOMContentLoaded', function() {
       tooltip.classList.toggle('show');
 
       // Hide tooltip when clicking anywhere else
-      const hideTooltip = function(event) {
+      const hideTooltip = function (event) {
         if (!container.contains(event.target)) {
           tooltip.classList.remove('show');
           document.removeEventListener('click', hideTooltip);

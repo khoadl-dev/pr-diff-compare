@@ -137,25 +137,51 @@ function compareDiffs(diff1Files, diff2Files, selectedFiles, ignoreContext) {
     selectedFiles = [...new Set([...Object.keys(diff1Files), ...Object.keys(diff2Files)])];
   }
 
+  const differentFiles = [];
+
   for (const filename of selectedFiles) {
     const content1 = diff1Files[filename] || '';
     const content2 = diff2Files[filename] || '';
 
-    if (ignoreContext) {
-      const filtered1 = content1.split('\n')
-        .filter(line => line.startsWith('+') || line.startsWith('-'))
-        .join('\n');
-      const filtered2 = content2.split('\n')
-        .filter(line => line.startsWith('+') || line.startsWith('-'))
-        .join('\n');
+    let isDifferent = false;
 
-      if (filtered1 !== filtered2) return false;
+    // Check if either content contains binary file marker
+    const isBinary1 = content1.startsWith('Binary files');
+    const isBinary2 = content2.startsWith('Binary files');
+
+    // If both are binary changes, consider them the same
+    if (isBinary1 && isBinary2) {
+      continue;
+    }
+
+    // If only one is binary, they're different
+    if (isBinary1 || isBinary2) {
+      isDifferent = true;
     } else {
-      if (content1 !== content2) return false;
+      // Regular text diff comparison
+      if (ignoreContext) {
+        const filtered1 = content1.split('\n')
+          .filter(line => line.startsWith('+') || line.startsWith('-'))
+          .join('\n');
+        const filtered2 = content2.split('\n')
+          .filter(line => line.startsWith('+') || line.startsWith('-'))
+          .join('\n');
+
+        if (filtered1 !== filtered2) isDifferent = true;
+      } else {
+        if (content1 !== content2) isDifferent = true;
+      }
+    }
+
+    if (isDifferent) {
+      differentFiles.push(filename);
     }
   }
 
-  return true;
+  return {
+    same: differentFiles.length === 0,
+    differentFiles: differentFiles
+  };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -197,7 +223,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Check if we have both diffs cached
       if (cachedDiffs[url1] && cachedDiffs[url2]) {
         const result = compareDiffs(cachedDiffs[url1], cachedDiffs[url2], selectedFiles, ignoreContext);
-        sendResponse({ same: result });
+        sendResponse(result);
         return;
       }
 
@@ -233,7 +259,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!cachedDiffs[url2]) cachedDiffs[url2] = diff2Files;
 
         const result = compareDiffs(diff1Files, diff2Files, selectedFiles, ignoreContext);
-        sendResponse({ same: result });
+        sendResponse(result);
       }).catch(error => {
         sendResponse({ error: error.message });
       });
